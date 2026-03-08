@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>밀도 칵테일 만들기 🍹</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -18,6 +18,7 @@
             font-family: 'Jua', sans-serif;
             background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
             min-height: 100vh;
+            touch-action: manipulation; /* 기본 터치 동작 최적화 */
         }
         
         /* 유리잔 질감 효과 */
@@ -54,6 +55,20 @@
             background-color: rgba(0, 0, 0, 0.5);
             backdrop-filter: blur(3px);
         }
+
+        /* 토핑 드래그용 요소 */
+        .topping-item {
+            position: absolute;
+            font-size: 3rem;
+            cursor: grab;
+            user-select: none;
+            filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.2));
+            z-index: 50;
+            touch-action: none; /* 드래그 중 화면 스크롤 방지 */
+        }
+        .topping-item:active {
+            cursor: grabbing;
+        }
     </style>
 </head>
 <body class="flex flex-col items-center py-6 lg:py-10 px-4 relative">
@@ -63,13 +78,11 @@
         메시지
     </div>
 
-    <!-- 전체화면 토글 버튼 (우측 상단 고정) -->
+    <!-- 전체화면 토글 버튼 -->
     <button onclick="toggleFullScreen()" class="fixed top-4 right-4 bg-white/70 hover:bg-white text-gray-800 p-3 rounded-full shadow-md z-50 transition-transform active:scale-95 backdrop-blur-md border border-gray-200">
-        <!-- 전체화면 진입 아이콘 -->
         <svg id="fs-enter-icon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 lg:h-8 lg:w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
         </svg>
-        <!-- 전체화면 종료(X) 아이콘 (평소엔 숨김) -->
         <svg id="fs-exit-icon" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 lg:h-8 lg:w-8 hidden text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" />
         </svg>
@@ -78,16 +91,16 @@
     <!-- 헤더 -->
     <header class="text-center mb-6 lg:mb-8">
         <h1 class="text-3xl lg:text-5xl font-bold text-gray-800 mb-2 drop-shadow-sm">밀도 칵테일 만들기 🍹</h1>
-        <p class="text-base lg:text-lg text-gray-600">무거운 액체부터 차례대로 넣어야 섞이지 않아요! (총 6층)</p>
+        <p class="text-base lg:text-lg text-gray-600">무거운 액체부터 차례대로 넣어야 섞이지 않아요!</p>
     </header>
 
-    <!-- 메인 레이아웃 (모바일 대응을 위해 flex-col 활용) -->
+    <!-- 메인 레이아웃 -->
     <main class="w-full max-w-6xl flex flex-col lg:flex-row gap-6 items-center lg:items-stretch">
         
-        <!-- 중앙 패널: 유리잔 & 캡처 영역 (모바일에서는 화면 최상단으로 배치) -->
+        <!-- 중앙 패널: 유리잔 & 캡처 영역 -->
         <div class="w-full lg:w-1/3 flex flex-col items-center justify-center order-1 lg:order-2">
             
-            <!-- 상태 표시 영역 (타이머 & 초기화 횟수) -->
+            <!-- 상태 표시 영역 -->
             <div class="flex gap-3 mb-4">
                 <div class="bg-white px-4 lg:px-6 py-2 rounded-full shadow-sm border border-gray-200 flex items-center gap-2">
                     <span class="text-xl">⏱️</span>
@@ -107,6 +120,9 @@
                     <p id="final-stats" class="text-gray-600 font-bold font-mono bg-white/70 inline-block px-3 py-1 rounded-full text-sm"></p>
                 </div>
 
+                <!-- 토핑들이 추가될 레이어 -->
+                <div id="toppings-layer" class="absolute inset-0 pointer-events-none z-50"></div>
+
                 <!-- 유리잔 윗부분 (입구) -->
                 <div class="w-48 h-4 rounded-[50%] border-4 border-slate-400/70 bg-white/40 mb-[-10px] z-10 relative shadow-sm mt-8"></div>
                 <!-- 유리잔 몸통 -->
@@ -119,56 +135,65 @@
 
             <!-- 액션 버튼 -->
             <div class="flex flex-col gap-3 w-full max-w-[16rem] mt-2">
-                <!-- 도전 시작 버튼 -->
                 <button id="start-btn" onclick="startChallenge()" class="w-full bg-green-500 hover:bg-green-600 text-white py-3 rounded-2xl font-bold shadow-md transition-transform active:scale-95 text-lg">
                     도전 시작 🚀
                 </button>
                 
-                <!-- 초기화 & 사진찍기 버튼 (시작 후에만 보임) -->
                 <div id="action-btns" class="hidden flex gap-3 w-full">
                     <button onclick="resetGame()" class="flex-1 bg-red-400 hover:bg-red-500 text-white py-3 rounded-2xl font-bold shadow-md transition-transform active:scale-95 text-lg">
                         초기화 🔄
-                    </button>
-                    <button onclick="captureCocktail()" class="flex-1 bg-purple-500 hover:bg-purple-600 text-white py-3 rounded-2xl font-bold shadow-md transition-transform active:scale-95 text-lg">
-                        사진찍기 📸
                     </button>
                 </div>
             </div>
         </div>
 
-        <!-- 왼쪽 패널: 액체 버튼들 -->
-        <div class="w-full lg:w-1/3 bg-white p-5 lg:p-6 rounded-3xl shadow-md border-2 border-gray-100 flex flex-col gap-4 order-2 lg:order-1">
-            <h2 class="text-xl lg:text-2xl text-center text-gray-700 border-b-2 border-dashed border-gray-200 pb-2 mb-2">💧 액체 추가하기</h2>
+        <!-- 왼쪽 패널 (액체 추가 / 토핑 추가 전환 컨테이너) -->
+        <div class="w-full lg:w-1/3 bg-white p-5 lg:p-6 rounded-3xl shadow-md border-2 border-gray-100 flex flex-col gap-4 order-2 lg:order-1 relative overflow-hidden h-full min-h-[350px]">
             
-            <div class="grid grid-cols-3 lg:grid-cols-1 gap-2 lg:gap-4 flex-1">
-                <button onclick="addLiquid('soySauce')" class="bg-stone-700 hover:bg-stone-800 text-white py-3 lg:py-4 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold break-keep">
-                    간장
-                </button>
-                <button onclick="addLiquid('honey')" class="bg-amber-600 hover:bg-amber-700 text-white py-3 lg:py-4 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold break-keep">
-                    꿀
-                </button>
-                <button onclick="addLiquid('water')" class="bg-blue-400 hover:bg-blue-500 text-white py-3 lg:py-4 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold break-keep">
-                    물
-                </button>
-                <button onclick="addLiquid('syrup')" class="bg-amber-200 hover:bg-amber-300 text-amber-900 py-3 lg:py-4 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold break-keep">
-                    물엿
-                </button>
-                <button onclick="addLiquid('babyOil')" class="bg-pink-100 hover:bg-pink-200 text-pink-900 py-3 lg:py-4 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold break-keep">
-                    베이비 오일
-                </button>
-                <button onclick="addLiquid('oil')" class="bg-yellow-300 hover:bg-yellow-400 text-yellow-900 py-3 lg:py-4 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold break-keep">
-                    식용유
-                </button>
-                <button onclick="addLiquid('alcohol')" class="bg-indigo-200 hover:bg-indigo-300 text-indigo-900 py-3 lg:py-4 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold break-keep">
-                    알코올
-                </button>
-                <button onclick="addLiquid('milk')" class="bg-gray-100 hover:bg-gray-200 text-gray-800 py-3 lg:py-4 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold break-keep">
-                    우유
-                </button>
-                <button onclick="addLiquid('soap')" class="bg-emerald-400 hover:bg-emerald-500 text-white py-3 lg:py-4 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold break-keep">
-                    주방세제
-                </button>
+            <!-- 액체 추가 패널 -->
+            <div id="liquid-panel" class="flex flex-col h-full w-full transition-opacity duration-300">
+                <h2 class="text-xl lg:text-2xl text-center text-gray-700 border-b-2 border-dashed border-gray-200 pb-2 mb-2">💧 액체 추가하기</h2>
+                <div class="grid grid-cols-3 lg:grid-cols-2 gap-2 lg:gap-3 flex-1">
+                    <button onclick="addLiquid('soySauce')" class="bg-stone-700 hover:bg-stone-800 text-white py-3 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold">간장</button>
+                    <button onclick="addLiquid('honey')" class="bg-amber-600 hover:bg-amber-700 text-white py-3 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold">꿀</button>
+                    <button onclick="addLiquid('water')" class="bg-blue-400 hover:bg-blue-500 text-white py-3 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold">물</button>
+                    <button onclick="addLiquid('syrup')" class="bg-amber-200 hover:bg-amber-300 text-amber-900 py-3 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold">물엿</button>
+                    <button onclick="addLiquid('babyOil')" class="bg-pink-100 hover:bg-pink-200 text-pink-900 py-3 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold">베이비오일</button>
+                    <button onclick="addLiquid('oil')" class="bg-yellow-300 hover:bg-yellow-400 text-yellow-900 py-3 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold">식용유</button>
+                    <button onclick="addLiquid('alcohol')" class="bg-indigo-200 hover:bg-indigo-300 text-indigo-900 py-3 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold">알코올</button>
+                    <button onclick="addLiquid('milk')" class="bg-gray-100 hover:bg-gray-200 text-gray-800 py-3 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold">우유</button>
+                    <button onclick="addLiquid('soap')" class="bg-emerald-400 hover:bg-emerald-500 text-white py-3 rounded-xl transition-transform active:scale-95 text-sm lg:text-lg shadow-sm font-bold">주방세제</button>
+                </div>
             </div>
+
+            <!-- 꾸미기 패널 (초기엔 숨김) -->
+            <div id="topping-panel" class="hidden flex-col h-full w-full transition-opacity duration-300 absolute inset-0 bg-white p-5 lg:p-6 z-10">
+                <h2 class="text-xl lg:text-2xl text-center text-purple-600 font-bold border-b-2 border-dashed border-purple-200 pb-2 mb-2">🎨 칵테일 꾸미기</h2>
+                <p class="text-xs lg:text-sm text-center text-gray-500 mb-4 bg-gray-50 p-2 rounded-lg">
+                    원하는 장식을 눌러 잔 위에 올리고 <strong>드래그</strong> 하세요!<br><span class="text-rose-400">(장식을 더블 탭하면 삭제됩니다)</span>
+                </p>
+                <div class="grid grid-cols-4 lg:grid-cols-3 gap-2 flex-1 content-start overflow-y-auto pr-1">
+                    <button onclick="addTopping('🍒')" class="bg-gray-50 hover:bg-gray-100 border border-gray-200 text-3xl py-2 rounded-xl transition-transform active:scale-95">🍒</button>
+                    <button onclick="addTopping('🍋')" class="bg-gray-50 hover:bg-gray-100 border border-gray-200 text-3xl py-2 rounded-xl transition-transform active:scale-95">🍋</button>
+                    <button onclick="addTopping('🍓')" class="bg-gray-50 hover:bg-gray-100 border border-gray-200 text-3xl py-2 rounded-xl transition-transform active:scale-95">🍓</button>
+                    <button onclick="addTopping('🍊')" class="bg-gray-50 hover:bg-gray-100 border border-gray-200 text-3xl py-2 rounded-xl transition-transform active:scale-95">🍊</button>
+                    <button onclick="addTopping('🌿')" class="bg-gray-50 hover:bg-gray-100 border border-gray-200 text-3xl py-2 rounded-xl transition-transform active:scale-95">🌿</button>
+                    <button onclick="addTopping('🧊')" class="bg-gray-50 hover:bg-gray-100 border border-gray-200 text-3xl py-2 rounded-xl transition-transform active:scale-95">🧊</button>
+                    <button onclick="addTopping('☂️')" class="bg-gray-50 hover:bg-gray-100 border border-gray-200 text-3xl py-2 rounded-xl transition-transform active:scale-95">☂️</button>
+                    <button onclick="addTopping('✨')" class="bg-gray-50 hover:bg-gray-100 border border-gray-200 text-3xl py-2 rounded-xl transition-transform active:scale-95">✨</button>
+                    <button onclick="addTopping('🌸')" class="bg-gray-50 hover:bg-gray-100 border border-gray-200 text-3xl py-2 rounded-xl transition-transform active:scale-95">🌸</button>
+                </div>
+                
+                <div class="mt-4 flex flex-col gap-2 pt-2 border-t border-gray-100">
+                    <button onclick="clearAllToppings()" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 py-2 rounded-xl font-bold shadow-sm transition-transform active:scale-95 text-base">
+                        🗑️ 장식 모두 지우기
+                    </button>
+                    <button onclick="captureDecoratedCocktail()" class="w-full bg-purple-500 hover:bg-purple-600 text-white py-3 rounded-xl font-bold shadow-md transition-transform active:scale-95 text-lg animate-pulse">
+                        📸 찰칵! 캡처하기
+                    </button>
+                </div>
+            </div>
+
         </div>
 
         <!-- 오른쪽 패널: 설명서 & 밀도표 확인 -->
@@ -176,12 +201,15 @@
             <h2 class="text-xl lg:text-2xl text-center text-gray-700 border-b-2 border-dashed border-gray-200 pb-2 mb-4">💡 게임 방법</h2>
             <div class="text-gray-600 text-base lg:text-lg leading-relaxed flex-1 space-y-4">
                 <p>
-                    <strong>밀도가 큰(무거운) 액체</strong>부터 순서대로 유리잔에 담아야 예쁜 층이 만들어집니다.
+                    <strong>밀도가 큰(무거운) 액체</strong>부터 순서대로 유리잔에 담아야 예쁜 층이 만들어집니다. (총 6층)
                 </p>
                 <p class="text-rose-500 font-bold bg-rose-50 p-3 rounded-xl">
-                    ※ 주의: 가벼운 액체 위에 무거운 액체를 부으면 서로 섞여버려서 컵을 비우고 다시 쌓아야 해요! <br><br>(실패해도 타이머는 멈추지 않습니다!)
+                    ※ 주의: 가벼운 액체 위에 무거운 액체를 부으면 서로 섞여버려서 컵을 비우고 다시 쌓아야 해요!
                 </p>
-                <div class="mt-auto pt-4 lg:pt-6 flex flex-col gap-3">
+                <p class="text-purple-600 font-bold bg-purple-50 p-3 rounded-xl mt-2">
+                    ✨ 6층을 모두 쌓으면 칵테일을 예쁘게 꾸미고 사진을 찍을 수 있어요!
+                </p>
+                <div class="mt-auto pt-4 flex flex-col gap-3">
                     <button onclick="openDensityTable()" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 py-3 rounded-xl font-bold transition-transform active:scale-95 text-lg shadow-sm border border-slate-300">
                         📋 액체 밀도표 힌트 보기
                     </button>
@@ -191,7 +219,6 @@
 
     </main>
 
-    <!-- 저작권 표시 영역 -->
     <footer class="mt-10 lg:mt-12 text-center text-gray-400 text-sm tracking-wide w-full pb-4">
         <p>&copy; 송쌤과학 & 승재체육관. All rights reserved.</p>
     </footer>
@@ -203,10 +230,7 @@
             <div class="bg-gray-50 rounded-2xl overflow-hidden border border-gray-200 mb-6">
                 <table class="w-full text-center text-base lg:text-lg">
                     <thead class="bg-slate-200 text-slate-700">
-                        <tr>
-                            <th class="py-2 px-4">액체 종류</th>
-                            <th class="py-2 px-4">밀도 (g/ml)</th>
-                        </tr>
+                        <tr><th class="py-2 px-4">액체 종류</th><th class="py-2 px-4">밀도 (g/ml)</th></tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200">
                         <tr class="hover:bg-stone-200 transition-colors"><td class="py-2">간장</td><td class="font-bold">1.15</td></tr>
@@ -228,7 +252,7 @@
         </div>
     </div>
 
-    <!-- 실패 팝업 모달 -->
+    <!-- 실패 모달 -->
     <div id="fail-modal" class="fixed inset-0 modal-bg hidden items-center justify-center z-50 p-4">
         <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 text-center border-4 border-rose-400 transform scale-95 transition-transform duration-300">
             <div class="text-6xl mb-4">💥</div>
@@ -248,11 +272,11 @@
         </div>
     </div>
 
-    <!-- 성공(완성) 팝업 모달 -->
+    <!-- 성공(완성) 모달 -->
     <div id="success-modal" class="fixed inset-0 modal-bg hidden items-center justify-center z-50 p-4">
         <div class="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 text-center border-4 border-purple-400 transform scale-95 transition-transform duration-300">
             <div class="text-6xl mb-4">🎉</div>
-            <h2 class="text-2xl lg:text-3xl font-bold text-gray-800 mb-2">칵테일 완성!</h2>
+            <h2 class="text-2xl lg:text-3xl font-bold text-gray-800 mb-2">층쌓기 완료!</h2>
             <div class="bg-purple-50 p-5 rounded-2xl my-6 border border-purple-100 shadow-inner">
                 <p class="text-gray-500 text-sm mb-1">나만의 아이돌 칵테일 이름</p>
                 <p id="success-cocktail-name" class="text-xl lg:text-2xl font-bold text-purple-700 mb-4 break-keep">달콤한 아이브 에디션</p>
@@ -269,11 +293,11 @@
                 </div>
             </div>
             <div class="flex flex-col gap-3">
-                <button onclick="captureFromModal()" class="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 rounded-xl transition-colors text-lg shadow-md flex items-center justify-center gap-2 active:scale-95">
-                    📸 칵테일 캡처하기
+                <button onclick="enterDecorationMode()" class="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-3 rounded-xl transition-colors text-xl shadow-md flex items-center justify-center gap-2 active:scale-95 animate-bounce">
+                    🎨 칵테일 꾸미러 가기!
                 </button>
-                <button onclick="closeSuccessModal()" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 rounded-xl transition-colors text-lg active:scale-95">
-                    새로 만들기 🔄
+                <button onclick="closeSuccessModalAndReset()" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 rounded-xl transition-colors text-lg active:scale-95">
+                    처음부터 다시 🔄
                 </button>
             </div>
         </div>
@@ -285,78 +309,41 @@
         const audioCtx = new AudioContext();
 
         function playSound(type) {
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
-
+            if (audioCtx.state === 'suspended') audioCtx.resume();
             const osc = audioCtx.createOscillator();
             const gainNode = audioCtx.createGain();
             osc.connect(gainNode);
             gainNode.connect(audioCtx.destination);
 
             if (type === 'click') {
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
-                gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.1);
+                osc.type = 'sine'; osc.frequency.setValueAtTime(600, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1); gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1); osc.start(); osc.stop(audioCtx.currentTime + 0.1);
             } else if (type === 'fail') {
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(200, audioCtx.currentTime);
-                osc.frequency.linearRampToValueAtTime(100, audioCtx.currentTime + 0.3);
-                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
-                gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.3);
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, audioCtx.currentTime); osc.frequency.linearRampToValueAtTime(100, audioCtx.currentTime + 0.3); gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime); gainNode.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.3); osc.start(); osc.stop(audioCtx.currentTime + 0.3);
             } else if (type === 'success') {
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(440, audioCtx.currentTime);
-                osc.frequency.setValueAtTime(554, audioCtx.currentTime + 0.1);
-                osc.frequency.setValueAtTime(659, audioCtx.currentTime + 0.2);
-                osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.3);
-                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.6);
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.6);
+                osc.type = 'square'; osc.frequency.setValueAtTime(440, audioCtx.currentTime); osc.frequency.setValueAtTime(554, audioCtx.currentTime + 0.1); osc.frequency.setValueAtTime(659, audioCtx.currentTime + 0.2); osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.3); gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.6); osc.start(); osc.stop(audioCtx.currentTime + 0.6);
             } else if (type === 'btn') {
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
-                osc.start();
-                osc.stop(audioCtx.currentTime + 0.05);
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(800, audioCtx.currentTime); gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05); osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+            } else if (type === 'pop') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(1000, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(2000, audioCtx.currentTime + 0.05); gainNode.gain.setValueAtTime(0.4, audioCtx.currentTime); gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05); osc.start(); osc.stop(audioCtx.currentTime + 0.05);
             }
         }
 
-        // --- 전체화면 제어 로직 ---
+        // 전체화면 토글
         function toggleFullScreen() {
             playSound('btn');
             if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => {
-                    showToast("이 기기/브라우저에서는 전체화면을 지원하지 않습니다.");
-                });
+                document.documentElement.requestFullscreen().catch(() => showToast("전체화면을 지원하지 않습니다."));
             } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                }
+                if (document.exitFullscreen) document.exitFullscreen();
             }
         }
 
         document.addEventListener('fullscreenchange', () => {
-            const enterIcon = document.getElementById('fs-enter-icon');
-            const exitIcon = document.getElementById('fs-exit-icon');
-            if (document.fullscreenElement) {
-                enterIcon.classList.add('hidden');
-                exitIcon.classList.remove('hidden');
-            } else {
-                enterIcon.classList.remove('hidden');
-                exitIcon.classList.add('hidden');
-            }
+            document.getElementById('fs-enter-icon').classList.toggle('hidden', document.fullscreenElement);
+            document.getElementById('fs-exit-icon').classList.toggle('hidden', !document.fullscreenElement);
         });
 
-        // 액체 데이터 정의
+        // 액체 데이터 및 이름 생성용 사전
         const liquidsData = {
             alcohol: { id: 'alcohol', name: '알코올', density: 0.79, colorClass: 'bg-indigo-200/90', textClass: 'text-indigo-900' },
             babyOil: { id: 'babyOil', name: '베이비 오일', density: 0.83, colorClass: 'bg-pink-100/90', textClass: 'text-pink-900' },
@@ -369,63 +356,34 @@
             honey: { id: 'honey', name: '꿀', density: 1.42, colorClass: 'bg-amber-600/90', textClass: 'text-white' }
         };
 
-        const namingDictionary = {
-            alcohol: { adj: '청량한' },
-            babyOil: { adj: '빛나는' },
-            oil: { adj: '유니크한' },
-            water: { adj: '맑은' },
-            milk: { adj: '부드러운' },
-            soap: { adj: '톡톡튀는' },
-            soySauce: { adj: '전설의' },
-            syrup: { adj: '강렬한' },
-            honey: { adj: '달콤한' }
-        };
-
-        const idolGroups = [
-            '방탄소년단', '블랙핑크', '트와이스', '세븐틴', '엔시티',
-            '스트레이 키즈', '투모로우바이투게더', '엔하이픈', '에스파', '아이브',
-            '르세라핌', '뉴진스', '있지', '(여자)아이들', '제로베이스원',
-            '라이즈', '보이넥스트도어', '투어스', '아일릿', '엔믹스', '베이비몬스터'
-        ];
+        const namingDictionary = { alcohol: '청량한', babyOil: '빛나는', oil: '유니크한', water: '맑은', milk: '부드러운', soap: '톡톡튀는', soySauce: '전설의', syrup: '강렬한', honey: '달콤한' };
+        const idolGroups = ['방탄소년단', '블랙핑크', '트와이스', '세븐틴', '엔시티', '스트레이 키즈', '투모로우바이투게더', '엔하이픈', '에스파', '아이브', '르세라핌', '뉴진스', '있지', '(여자)아이들', '제로베이스원', '라이즈', '보이넥스트도어', '투어스', '아일릿', '엔믹스', '베이비몬스터'];
 
         let glassState = []; 
         const MAX_LAYERS = 6; 
         
-        // 게임 진행 상태 변수
+        // 상태 변수
         let isChallengeStarted = false;
-        let resetCount = 0; // 초기화(실패 후 컵 비우기) 횟수
-
-        // 타이머 변수
+        let isDecorationMode = false;
+        let resetCount = 0;
         let timerInterval = null;
         let startTime = 0;
         let isTimerRunning = false;
+        let currentCocktailName = "";
 
+        // 타이머 유틸리티
         function formatTime(ms) {
             let totalSeconds = Math.floor(ms / 1000);
-            let minutes = Math.floor(totalSeconds / 60);
-            let seconds = totalSeconds % 60;
-            let hundredths = Math.floor((ms % 1000) / 10);
-            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}`;
+            return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}.${String(Math.floor((ms % 1000) / 10)).padStart(2, '0')}`;
         }
-
         function startTimer() {
             if (isTimerRunning) return;
             isTimerRunning = true;
             startTime = Date.now();
-            timerInterval = setInterval(() => {
-                document.getElementById('timer-display').innerText = formatTime(Date.now() - startTime);
-            }, 10);
+            timerInterval = setInterval(() => { document.getElementById('timer-display').innerText = formatTime(Date.now() - startTime); }, 10);
         }
-
-        function stopTimer() {
-            isTimerRunning = false;
-            clearInterval(timerInterval);
-        }
-
-        function resetTimer() {
-            stopTimer();
-            document.getElementById('timer-display').innerText = "00:00.00";
-        }
+        function stopTimer() { isTimerRunning = false; clearInterval(timerInterval); }
+        function resetTimer() { stopTimer(); document.getElementById('timer-display').innerText = "00:00.00"; }
 
         function showToast(message) {
             const toast = document.getElementById('toast');
@@ -438,14 +396,14 @@
             }, 2000);
         }
 
-        // --- 도전 시작 로직 ---
+        // 게임 로직
         function startChallenge() {
             playSound('btn');
             isChallengeStarted = true;
+            isDecorationMode = false;
             resetCount = 0;
             document.getElementById('reset-count-display').innerText = "0회";
             
-            // UI 변경: 시작 버튼 숨기고, 초기화/캡처 버튼 보이기
             document.getElementById('start-btn').classList.add('hidden');
             document.getElementById('action-btns').classList.remove('hidden');
             
@@ -453,136 +411,74 @@
             showToast("도전 시작! 빠르게 층을 쌓아보세요 ⏱️");
         }
 
-        // --- 게임 완전 초기화 로직 (새 게임) ---
         function resetGame() {
             playSound('btn');
             glassState = [];
             resetTimer();
             isChallengeStarted = false;
+            isDecorationMode = false;
             resetCount = 0;
             document.getElementById('reset-count-display').innerText = "0회";
             
-            // UI 변경: 다시 시작 버튼 보이고, 다른 버튼 숨기기
             document.getElementById('start-btn').classList.remove('hidden');
             document.getElementById('action-btns').classList.add('hidden');
             
+            // 패널 되돌리기
+            document.getElementById('liquid-panel').classList.remove('hidden');
+            document.getElementById('topping-panel').classList.add('hidden');
+            clearAllToppings();
+
             renderGlass();
-            showToast("완전 초기화되었습니다. 준비가 되면 시작을 눌러주세요! ✨");
+            showToast("초기화되었습니다. 시작을 눌러주세요! ✨");
         }
 
-        // --- 컵 내용물만 비우기 로직 (실패 시 타이머 유지) ---
         function clearGlassOnly() {
             glassState = [];
             resetCount++;
             document.getElementById('reset-count-display').innerText = resetCount + "회";
             renderGlass();
-            showToast("컵을 비웠습니다. 남은 시간동안 서둘러 다시 쌓아주세요! 🔥");
-            // 의도적으로 resetTimer()를 호출하지 않아 시간이 계속 흐릅니다.
+            showToast("컵을 비웠습니다. 서둘러 다시 쌓아주세요! 🔥");
         }
 
-        // 밀도표 모달 열기/닫기
-        function openDensityTable() {
-            playSound('btn');
-            const modal = document.getElementById('density-modal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            setTimeout(() => modal.children[0].classList.replace('scale-95', 'scale-100'), 10);
-        }
-        function closeDensityTable() {
-            playSound('btn');
-            const modal = document.getElementById('density-modal');
-            modal.children[0].classList.replace('scale-100', 'scale-95');
-            setTimeout(() => {
-                modal.classList.add('hidden');
-                modal.classList.remove('flex');
-            }, 300);
-        }
+        // 모달 관리
+        function openDensityTable() { playSound('btn'); toggleModal('density-modal', true); }
+        function closeDensityTable() { playSound('btn'); toggleModal('density-modal', false); }
+        function showFailModal() { playSound('fail'); toggleModal('fail-modal', true); }
+        function closeFailModal() { playSound('btn'); toggleModal('fail-modal', false); clearGlassOnly(); }
+        function openDensityTableFromFail() { closeFailModal(); setTimeout(openDensityTable, 300); }
+        function showSuccessModal() { playSound('success'); toggleModal('success-modal', true); }
+        function closeSuccessModalAndReset() { playSound('btn'); toggleModal('success-modal', false); setTimeout(resetGame, 300); }
 
-        // 실패 모달 열기/닫기
-        function showFailModal() {
-            playSound('fail');
-            const modal = document.getElementById('fail-modal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            setTimeout(() => modal.children[0].classList.replace('scale-95', 'scale-100'), 10);
-        }
-        function closeFailModal() {
-            playSound('btn');
-            const modal = document.getElementById('fail-modal');
-            modal.children[0].classList.replace('scale-100', 'scale-95');
-            setTimeout(() => {
-                modal.classList.add('hidden');
-                modal.classList.remove('flex');
-                clearGlassOnly(); // 타이머는 유지한 채로 컵의 내용물만 초기화합니다!
-            }, 300);
-        }
-        function openDensityTableFromFail() {
-            closeFailModal();
-            setTimeout(openDensityTable, 300);
-        }
-
-        // 성공 모달 열기/닫기
-        function showSuccessModal() {
-            playSound('success');
-            const modal = document.getElementById('success-modal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            setTimeout(() => modal.children[0].classList.replace('scale-95', 'scale-100'), 10);
-        }
-        function closeSuccessModal() {
-            playSound('btn');
-            const modal = document.getElementById('success-modal');
-            modal.children[0].classList.replace('scale-100', 'scale-95');
-            setTimeout(() => {
-                modal.classList.add('hidden');
-                modal.classList.remove('flex');
-                resetGame(); // 성공 후에는 게임 완전 초기화
-            }, 300);
+        function toggleModal(id, show) {
+            const modal = document.getElementById(id);
+            if(show) {
+                modal.classList.remove('hidden'); modal.classList.add('flex');
+                setTimeout(() => modal.children[0].classList.replace('scale-95', 'scale-100'), 10);
+            } else {
+                modal.children[0].classList.replace('scale-100', 'scale-95');
+                setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('flex'); }, 300);
+            }
         }
 
         function generateCocktailName() {
             if(glassState.length === 0) return "투명한 칵테일";
             const topLiquid = glassState[glassState.length - 1]; 
-            
-            const prefix = namingDictionary[topLiquid.id].adj;
-            
+            const prefix = namingDictionary[topLiquid.id];
             const densitySum = glassState.reduce((sum, layer) => sum + layer.density, 0);
-            const idolIndex = Math.floor(densitySum * 100) % idolGroups.length;
-            const suffix = idolGroups[idolIndex];
-            
+            const suffix = idolGroups[Math.floor(densitySum * 100) % idolGroups.length];
             return `${prefix} ${suffix} 에디션`;
         }
 
-        // 액체 추가 게임 로직
         function addLiquid(type) {
-            // 도전 시작을 안 눌렀을 경우 차단
-            if (!isChallengeStarted) {
-                showToast("도전 시작 버튼을 먼저 눌러주세요! 🚀");
-                playSound('fail');
-                return;
-            }
-
-            if (glassState.length >= MAX_LAYERS) {
-                showToast("이미 6개의 층이 모두 완성되었어요! 🎉");
-                playSound('fail');
-                return;
-            }
-
-            const liquid = liquidsData[type];
+            if (!isChallengeStarted) return showToast("도전 시작 버튼을 먼저 눌러주세요! 🚀"), playSound('fail');
+            if (isDecorationMode) return showToast("지금은 꾸미기 시간입니다! 🎨"), playSound('fail');
+            if (glassState.length >= MAX_LAYERS) return showToast("이미 6개의 층이 모두 완성되었어요! 🎉"), playSound('fail');
             
-            if (glassState.find(l => l.id === liquid.id)) {
-                showToast("이미 넣은 액체예요! 다른 액체를 골라주세요.");
-                playSound('fail');
-                return;
-            }
+            const liquid = liquidsData[type];
+            if (glassState.find(l => l.id === liquid.id)) return showToast("이미 넣은 액체예요!"), playSound('fail');
 
-            // 실패 조건 (여기에 있던 stopTimer()를 제거하여 실패해도 시간이 가도록 수정했습니다)
-            if (glassState.length > 0) {
-                const topLiquid = glassState[glassState.length - 1];
-                if (liquid.density >= topLiquid.density) {
-                    showFailModal();
-                    return; 
-                }
+            if (glassState.length > 0 && liquid.density >= glassState[glassState.length - 1].density) {
+                return showFailModal(); 
             }
 
             playSound('click');
@@ -590,119 +486,157 @@
             renderGlass();
 
             if (glassState.length === MAX_LAYERS) {
-                stopTimer(); // 성공했을 때만 타이머를 멈춥니다!
-                
-                const finalName = generateCocktailName();
-                const finalTime = document.getElementById('timer-display').innerText;
-                
-                document.getElementById('success-cocktail-name').innerText = finalName;
-                document.getElementById('success-time').innerText = finalTime;
+                stopTimer();
+                currentCocktailName = generateCocktailName();
+                document.getElementById('success-cocktail-name').innerText = currentCocktailName;
+                document.getElementById('success-time').innerText = document.getElementById('timer-display').innerText;
                 document.getElementById('success-reset-count').innerText = resetCount + "회";
 
                 triggerConfetti();
-                
-                setTimeout(() => {
-                    showSuccessModal();
-                }, 1200);
+                setTimeout(showSuccessModal, 1200);
             }
         }
 
         function renderGlass() {
             const container = document.getElementById('glass-content');
             container.innerHTML = '';
-
+            
             const emptySpaceDiv = document.createElement('div');
             emptySpaceDiv.style.height = `${((MAX_LAYERS - glassState.length) / MAX_LAYERS) * 100}%`;
             emptySpaceDiv.className = 'w-full transition-all duration-500 ease-in-out';
             container.appendChild(emptySpaceDiv);
 
-            const reversedState = [...glassState].reverse();
-
-            reversedState.forEach((layer) => {
+            [...glassState].reverse().forEach((layer) => {
                 const layerDiv = document.createElement('div');
-                const heightPercent = (1 / MAX_LAYERS) * 100;
-                
                 layerDiv.className = `w-full ${layer.colorClass} ${layer.textClass} flex items-center justify-center font-bold transition-all duration-500 ease-in-out relative overflow-hidden`;
-                layerDiv.style.height = `${heightPercent}%`;
-                
+                layerDiv.style.height = `${(1 / MAX_LAYERS) * 100}%`;
                 layerDiv.style.borderTop = '2px solid rgba(255,255,255,0.2)';
-
                 layerDiv.innerHTML = `<span class="drop-shadow-sm z-10 text-lg lg:text-xl">${layer.name}</span>`;
-
                 container.appendChild(layerDiv);
             });
         }
 
-        function triggerConfetti() {
-            var duration = 3 * 1000;
-            var animationEnd = Date.now() + duration;
-            var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
-
-            function randomInRange(min, max) {
-                return Math.random() * (max - min) + min;
-            }
-
-            var interval = setInterval(function() {
-                var timeLeft = animationEnd - Date.now();
-
-                if (timeLeft <= 0) {
-                    return clearInterval(interval);
-                }
-
-                var particleCount = 50 * (timeLeft / duration);
-                confetti(Object.assign({}, defaults, { particleCount,
-                    origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 }
-                }));
-                confetti(Object.assign({}, defaults, { particleCount,
-                    origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 }
-                }));
-            }, 250);
+        // --- 장식(토핑) 모드 로직 ---
+        function enterDecorationMode() {
+            playSound('pop');
+            toggleModal('success-modal', false);
+            isDecorationMode = true;
+            
+            // 패널 전환
+            document.getElementById('liquid-panel').classList.add('hidden');
+            document.getElementById('topping-panel').classList.remove('hidden');
+            document.getElementById('topping-panel').classList.add('flex');
+            
+            showToast("드래그해서 예쁘게 꾸며보세요! 🎨");
         }
 
-        function captureCocktail() {
-            playSound('btn');
-            if (glassState.length === 0) {
-                showToast("빈 잔은 찍을 수 없어요! 액체를 채워주세요. 🥺");
-                return;
-            }
-            executeCapture("나만의_밀도칵테일.png");
+        function addTopping(emoji) {
+            playSound('pop');
+            const layer = document.getElementById('toppings-layer');
+            const el = document.createElement('div');
+            el.className = 'topping-item pointer-events-auto';
+            el.innerText = emoji;
+            
+            // 초기 위치 (잔 윗부분 중앙 근처)
+            el.style.left = `calc(50% - 1.5rem)`;
+            el.style.top = `10%`;
+            
+            layer.appendChild(el);
+            makeDraggable(el);
+
+            // 더블 클릭(탭) 시 삭제
+            let lastTap = 0;
+            el.addEventListener('touchend', function(e) {
+                const currentTime = new Date().getTime();
+                const tapLength = currentTime - lastTap;
+                if (tapLength < 500 && tapLength > 0) { el.remove(); playSound('click'); e.preventDefault(); }
+                lastTap = currentTime;
+            });
+            el.addEventListener('dblclick', function(e) {
+                el.remove(); playSound('click'); e.preventDefault();
+            });
         }
 
-        function captureFromModal() {
+        function clearAllToppings() {
+            playSound('fail');
+            document.getElementById('toppings-layer').innerHTML = '';
+        }
+
+        function makeDraggable(el) {
+            let isDragging = false, startX, startY, initialX, initialY;
+
+            const dragStart = (e) => {
+                isDragging = true;
+                const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+                const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+                startX = clientX; startY = clientY;
+                initialX = el.offsetLeft; initialY = el.offsetTop;
+                el.style.zIndex = 1000;
+            };
+
+            const drag = (e) => {
+                if (!isDragging) return;
+                e.preventDefault(); // 스크롤 방지
+                const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+                const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+                el.style.left = `${initialX + (clientX - startX)}px`;
+                el.style.top = `${initialY + (clientY - startY)}px`;
+            };
+
+            const dragEnd = () => { if(isDragging){ isDragging = false; el.style.zIndex = 50; } };
+
+            el.addEventListener('mousedown', dragStart);
+            document.addEventListener('mousemove', drag, {passive: false});
+            document.addEventListener('mouseup', dragEnd);
+
+            el.addEventListener('touchstart', dragStart, {passive: false});
+            document.addEventListener('touchmove', drag, {passive: false});
+            document.addEventListener('touchend', dragEnd);
+        }
+
+        // --- 캡처 로직 ---
+        function captureDecoratedCocktail() {
             playSound('btn');
-            const nameLabel = document.getElementById('final-name');
-            const statsLabel = document.getElementById('final-stats');
             const overlay = document.getElementById('final-label');
             const captureArea = document.getElementById('capture-area');
             
-            nameLabel.innerText = document.getElementById('success-cocktail-name').innerText;
-            statsLabel.innerText = `⏱️ ${document.getElementById('success-time').innerText} | 🔄 ${resetCount}회`;
-            overlay.classList.remove('hidden');
-            captureArea.classList.add('bg-white'); 
+            // 라벨 세팅
+            document.getElementById('final-name').innerText = currentCocktailName;
+            document.getElementById('final-stats').innerText = `⏱️ ${document.getElementById('timer-display').innerText} | 🔄 ${resetCount}회`;
             
-            executeCapture(document.getElementById('success-cocktail-name').innerText + ".png")
-            .finally(() => {
-                overlay.classList.add('hidden');
-                captureArea.classList.remove('bg-white');
-            });
+            // 촬영용 스타일 변경
+            overlay.classList.remove('hidden');
+            captureArea.classList.add('bg-white'); // 배경색 채우기
+            
+            showToast("멋진 칵테일 저장 중... 📸");
+
+            setTimeout(() => {
+                html2canvas(captureArea, { backgroundColor: null, scale: 2 }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = currentCocktailName + ".png";
+                    link.href = canvas.toDataURL('image/png');
+                    link.click();
+                }).catch(err => {
+                    console.error("캡처 실패: ", err);
+                    showToast("앗, 사진 촬영에 실패했어요.");
+                }).finally(() => {
+                    overlay.classList.add('hidden');
+                    captureArea.classList.remove('bg-white');
+                });
+            }, 100); // 렌더링 딜레이 확보
         }
 
-        function executeCapture(fileName) {
-            showToast("사진 촬영 중... 찰칵! 📸");
-            const captureArea = document.getElementById('capture-area');
-            
-            return html2canvas(captureArea, {
-                backgroundColor: null,
-                scale: 2 
-            }).then(canvas => {
-                const link = document.createElement('a');
-                link.download = fileName;
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-            }).catch(err => {
-                console.error("캡처 실패: ", err);
-                showToast("앗, 사진 촬영에 실패했어요.");
-            });
+        // 파티클 애니메이션
+        function triggerConfetti() {
+            var duration = 3 * 1000; var animationEnd = Date.now() + duration; var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
+            function randomInRange(min, max) { return Math.random() * (max - min) + min; }
+            var interval = setInterval(function() {
+                var timeLeft = animationEnd - Date.now();
+                if (timeLeft <= 0) return clearInterval(interval);
+                var particleCount = 50 * (timeLeft / duration);
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
+                confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
+            }, 250);
         }
     </script>
 </body>
